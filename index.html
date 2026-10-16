@@ -1,423 +1,255 @@
-<!DOCTYPE html>
+from pathlib import Path
+
+html = r'''<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>RailGuard · LiDAR Edge Monitor</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RailGuard | Live Train & Gate Monitor</title>
+<meta name="theme-color" content="#0b1220">
 <style>
-  :root {
-    --bg:        #0b0f17;
-    --panel:     #121826;
-    --panel-2:   #1a2233;
-    --border:    #212c40;
-    --text:      #e6ecf5;
-    --muted:     #7b8aa3;
-    --accent:    #38bdf8;
-    --safe:      #22c55e;
-    --warn:      #f59e0b;
-    --danger:    #ef4444;
-    --font:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: var(--font);
-    background: radial-gradient(circle at 20% 0%, #16203a 0%, var(--bg) 45%);
-    color: var(--text);
-    min-height: 100vh;
-    padding: 32px 24px;
-    -webkit-font-smoothing: antialiased;
-  }
-
-  /* ===== Header ===== */
-  header {
-    max-width: 1180px; margin: 0 auto 32px;
-    display: flex; align-items: center; justify-content: space-between;
-    padding-bottom: 20px; border-bottom: 1px solid var(--border);
-  }
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .logo {
-    width: 42px; height: 42px; border-radius: 12px;
-    background: linear-gradient(135deg, var(--accent), #6366f1);
-    display: grid; place-items: center;
-    font-size: 20px; box-shadow: 0 8px 24px -8px var(--accent);
-  }
-  .brand h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: -.2px; }
-  .brand p  { font-size: .75rem; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
-
-  .conn {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 16px; border-radius: 999px;
-    background: var(--panel); border: 1px solid var(--border);
-    font-size: .8rem; font-weight: 500;
-  }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-  .conn.online  .dot { background: var(--safe);   box-shadow: 0 0 10px var(--safe); }
-  .conn.offline .dot { background: var(--danger); }
-
-  /* ===== Layout ===== */
-  main { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
-
-  .row { display: grid; gap: 20px; }
-  .row.cols-4 { grid-template-columns: repeat(4, 1fr); }
-  .row.cols-2 { grid-template-columns: 1.6fr 1fr; }
-
-  @media (max-width: 900px) {
-    .row.cols-4 { grid-template-columns: repeat(2, 1fr); }
-    .row.cols-2 { grid-template-columns: 1fr; }
-  }
-
-  /* ===== Card ===== */
-  .card {
-    background: linear-gradient(180deg, var(--panel), var(--panel-2));
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 22px;
-    position: relative;
-    overflow: hidden;
-  }
-  .card::before {
-    content: ''; position: absolute; inset: 0 0 auto 0; height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(56,189,248,.35), transparent);
-  }
-  .card h2 {
-    font-size: .7rem; text-transform: uppercase; letter-spacing: 1.5px;
-    color: var(--muted); font-weight: 600; margin-bottom: 14px;
-  }
-  .metric {
-    font-size: 2.4rem; font-weight: 700; letter-spacing: -1px;
-    font-variant-numeric: tabular-nums; line-height: 1;
-  }
-  .metric .unit {
-    font-size: .95rem; color: var(--muted); font-weight: 500;
-    margin-left: 6px; letter-spacing: 0;
-  }
-  .sub { margin-top: 8px; font-size: .8rem; color: var(--muted); }
-
-  /* ===== Status banner ===== */
-  #statusBanner {
-    padding: 16px 20px; border-radius: 14px; font-weight: 600;
-    font-size: .95rem; display: flex; align-items: center; gap: 10px;
-    border: 1px solid transparent; transition: all .25s;
-  }
-  #statusBanner.safe    { background: rgba(34,197,94,.10);  color: var(--safe);   border-color: rgba(34,197,94,.30); }
-  #statusBanner.warning { background: rgba(245,158,11,.10); color: var(--warn);   border-color: rgba(245,158,11,.30); }
-  #statusBanner.danger  { background: rgba(239,68,68,.12);  color: var(--danger); border-color: rgba(239,68,68,.35); animation: pulse 1s infinite; }
-
-  @keyframes pulse {
-    0%,100% { opacity: 1; }
-    50%     { opacity: .55; }
-  }
-
-  /* ===== Bars ===== */
-  .bar { height: 6px; background: #1a2233; border-radius: 999px; overflow: hidden; margin-top: 12px; }
-  .bar-fill { height: 100%; border-radius: 999px; transition: width .2s ease; }
-  #ampFill { background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e); width: 0; }
-
-  /* ===== Chart ===== */
-  canvas { width: 100%; height: 220px; display: block; }
-
-  /* ===== Table ===== */
-  .table-wrap { max-height: 260px; overflow-y: auto; border-radius: 10px; }
-  table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-  thead th {
-    position: sticky; top: 0;
-    background: var(--panel-2); color: var(--muted);
-    text-align: left; padding: 10px 12px;
-    font-weight: 600; text-transform: uppercase; font-size: .68rem;
-    letter-spacing: 1px;
-  }
-  tbody td { padding: 9px 12px; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
-  tbody tr:hover { background: rgba(56,189,248,.04); }
-
-  /* ===== Buttons ===== */
-  .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-  button {
-    font-family: var(--font); font-size: .8rem; font-weight: 600;
-    padding: 10px 16px; border-radius: 10px; cursor: pointer;
-    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
-    transition: all .15s;
-  }
-  button:hover { border-color: var(--accent); color: var(--accent); }
-  button.primary { background: var(--accent); color: #001621; border-color: var(--accent); }
-  button.primary:hover { filter: brightness(1.1); color: #001621; }
-  button.danger:hover { border-color: var(--danger); color: var(--danger); }
-
-  footer {
-    max-width: 1180px; margin: 40px auto 0; text-align: center;
-    color: var(--muted); font-size: .75rem; letter-spacing: .5px;
-  }
+:root{--bg:#08111f;--panel:#111d30;--panel2:#0c1728;--line:#26374e;--text:#edf4ff;--muted:#9eb0c8;--green:#36d399;--yellow:#ffc857;--red:#ff5d6c;--blue:#63b3ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 15% 0%,#172944 0,transparent 38%),var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+header{padding:24px clamp(16px,4vw,42px) 18px;border-bottom:1px solid var(--line);display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:13px}.logo{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#3a8dff,#36d399);display:grid;place-items:center;font-size:24px;box-shadow:0 8px 30px #2d83ff30}
+h1{font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:.2px}.sub{color:var(--muted);font-size:13px;margin-top:3px}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:#8292a9}.dot.live{background:var(--green);box-shadow:0 0 0 4px #36d39920}
+main{max-width:1440px;margin:auto;padding:22px clamp(14px,3vw,34px) 40px}.grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,1fr);gap:18px}.panel{background:linear-gradient(180deg,#142239,#101a2b);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 12px 35px #0002;min-width:0}.panel h2{font-size:16px;margin:0 0 14px}.scene-panel{padding:0;overflow:hidden}.scene-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:17px 18px 0;flex-wrap:wrap}.scene{display:block;width:100%;height:auto;min-height:250px}.scene-caption{padding:0 18px 17px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.metric{padding:15px;border:1px solid var(--line);border-radius:14px;background:#0b1728}.metric-label{font-size:12px;color:var(--muted)}.metric-value{font-size:clamp(25px,3vw,36px);font-weight:750;letter-spacing:-1px;margin:5px 0}.metric-foot{font-size:12px;color:var(--muted)}.status{font-weight:750;font-size:14px;letter-spacing:.4px}.normal{color:var(--green)}.warn{color:var(--yellow)}.fault{color:var(--red)}.blue{color:var(--blue)}
+.bar-wrap{height:9px;background:#25354b;border-radius:99px;overflow:hidden;margin-top:12px}.bar{height:100%;width:0;background:var(--green);transition:width .35s,background .35s;border-radius:99px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}.formrow{display:flex;gap:8px;flex-wrap:wrap}.formrow input{flex:1;min-width:180px;background:#091526;border:1px solid #344761;border-radius:10px;color:var(--text);padding:11px 12px;font:inherit}.btn{border:0;border-radius:10px;padding:11px 15px;background:#3182f6;color:white;font-weight:700;cursor:pointer}.btn:hover{filter:brightness(1.1)}.small{font-size:12px;color:var(--muted);margin:10px 0 0}.connection{font-size:12px;margin-top:10px;color:var(--muted);overflow-wrap:anywhere}
+.loglist{display:flex;flex-direction:column;gap:8px;max-height:330px;overflow:auto}.log{border:1px solid #3a2c3d;background:#1b1b2b;border-radius:11px;padding:11px 12px;display:flex;justify-content:space-between;gap:12px;align-items:center}.log strong{display:block;color:#ff8792}.log small{color:var(--muted)}.empty{padding:20px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:12px;color:var(--muted)}.legend span{display:flex;align-items:center;gap:6px}.swatch{width:8px;height:8px;border-radius:50%}
+footer{max-width:1440px;margin:auto;padding:0 24px 28px;color:#8092aa;font-size:11px}
+@keyframes wheel{to{transform:rotate(360deg)}}@keyframes railMove{to{stroke-dashoffset:-100}}@keyframes blink{50%{opacity:.3}}@keyframes gateDown{to{transform:rotate(0deg)}}.wheel{transform-box:fill-box;transform-origin:center;animation:wheel 1s linear infinite}.rail-dash{animation:railMove 2s linear infinite}.warning-light{animation:blink .8s steps(2,start) infinite}
+@media(max-width:900px){.grid,.two{grid-template-columns:1fr}}@media(max-width:520px){header{align-items:flex-start}.metrics{grid-template-columns:1fr 1fr}.panel{padding:14px}.scene-panel{padding:0}.scene-head{padding:14px 14px 0}.scene-caption{padding:0 14px 14px}.metric{padding:12px}.metric-value{font-size:25px}}
 </style>
 </head>
 <body>
-
 <header>
-  <div class="brand">
-    <div class="logo">🚆</div>
-    <div>
-      <h1>RailGuard Monitoring</h1>
-      <p>LiDAR Edge Sensor · Track Intrusion Detection</p>
-    </div>
-  </div>
-  <div id="conn" class="conn offline">
-    <span class="dot"></span>
-    <span id="connText">Disconnected</span>
-  </div>
+  <div class="brand"><div class="logo">🚦</div><div><h1>RailGuard <span style="color:#63b3ff">Live Monitor</span></h1><div class="sub">TF-Luna distance • Train approach visualization • Gate status</div></div></div>
+  <div class="pill"><span id="liveDot" class="dot"></span><span id="connectionText">Waiting for Firebase connection</span></div>
 </header>
-
 <main>
-
-  <!-- Status banner -->
-  <div id="statusBanner" class="safe">✅ Track clear — monitoring active</div>
-
-  <!-- Top metrics -->
-  <div class="row cols-4">
-    <div class="card">
-      <h2>Distance</h2>
-      <div class="metric"><span id="distance">--</span><span class="unit">cm</span></div>
-      <div class="sub">Nearest object along beam</div>
-    </div>
-    <div class="card">
-      <h2>Signal Amplitude</h2>
-      <div class="metric"><span id="amplitude">--</span></div>
-      <div class="bar"><div id="ampFill" class="bar-fill"></div></div>
-      <div class="sub">Return strength indicator</div>
-    </div>
-    <div class="card">
-      <h2>Sample Rate</h2>
-      <div class="metric"><span id="rate">0</span><span class="unit">Hz</span></div>
-      <div class="sub">Live packet throughput</div>
-    </div>
-    <div class="card">
-      <h2>Uptime</h2>
-      <div class="metric"><span id="uptime">0</span><span class="unit">s</span></div>
-      <div class="sub">Sensor online duration</div>
-    </div>
+  <div class="grid">
+    <section class="panel scene-panel">
+      <div class="scene-head"><h2>2D Railway Crossing Simulation</h2><span id="sceneStatus" class="status blue">WAITING FOR DATA</span></div>
+      <svg class="scene" viewBox="0 0 900 390" role="img" aria-label="Animated 2D railway crossing with train and gate">
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#142b49"/><stop offset="1" stop-color="#263d59"/></linearGradient>
+          <linearGradient id="trainBody" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6a75"/><stop offset="1" stop-color="#c82e48"/></linearGradient>
+          <pattern id="sleepers" width="42" height="22" patternUnits="userSpaceOnUse"><rect x="4" y="0" width="8" height="22" rx="2" fill="#6c7d91"/></pattern>
+        </defs>
+        <rect width="900" height="390" fill="url(#sky)"/>
+        <circle cx="755" cy="58" r="24" fill="#f6dca0" opacity=".9"/>
+        <path d="M0 195 L105 100 190 165 295 83 410 183 515 112 630 177 740 96 900 190 V270 H0Z" fill="#294b61"/>
+        <path d="M0 230 Q180 195 330 232 T650 225 T900 218 V390 H0Z" fill="#1d574f"/>
+        <path d="M0 263 H900 V390 H0Z" fill="#35404c"/>
+        <path d="M0 300 H900 M0 350 H900" stroke="#a7b3c2" stroke-width="6"/>
+        <path d="M0 310 H900 M0 340 H900" stroke="#e3e8ed" stroke-width="2" stroke-dasharray="24 18" class="rail-dash"/>
+        <rect x="0" y="294" width="900" height="52" fill="url(#sleepers)" opacity=".75"/>
+        <path d="M0 300 H900 M0 340 H900" stroke="#dce4ed" stroke-width="4"/>
+        <!-- crossing road -->
+        <path d="M0 246 H900 V286 H0Z" fill="#69717a"/>
+        <path d="M0 266 H900" stroke="#f8d56c" stroke-width="3" stroke-dasharray="26 20"/>
+        <!-- station sign -->
+        <rect x="38" y="120" width="105" height="60" rx="5" fill="#10233a" stroke="#91b8d6" stroke-width="2"/>
+        <text x="90" y="145" fill="#e9f4ff" text-anchor="middle" font-size="12" font-weight="700">RAILWAY</text><text x="90" y="162" fill="#7bd4ff" text-anchor="middle" font-size="12">CROSSING</text>
+        <!-- train; its position is driven by measured distance -->
+        <g id="train" transform="translate(390 0)">
+          <rect x="0" y="190" width="290" height="84" rx="10" fill="url(#trainBody)" stroke="#ffb0b6" stroke-width="2"/>
+          <path d="M0 208 Q0 188 22 188 H70 V245 H0Z" fill="#d63e54"/>
+          <rect x="18" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+          <rect x="80" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+          <rect x="133" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+          <rect x="186" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+          <rect x="242" y="202" width="28" height="34" rx="4" fill="#f7d36a"/>
+          <rect x="0" y="245" width="290" height="12" fill="#8c253b"/>
+          <circle cx="45" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/><circle cx="45" cy="278" r="5" fill="#6f7d8c" class="wheel"/>
+          <circle cx="235" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/><circle cx="235" cy="278" r="5" fill="#6f7d8c" class="wheel"/>
+          <text x="145" y="241" fill="#fff" text-anchor="middle" font-size="13" font-weight="800">TRAIN</text>
+        </g>
+        <!-- sensor pole -->
+        <rect x="750" y="160" width="9" height="100" rx="3" fill="#a9b8c9"/>
+        <rect x="735" y="151" width="39" height="24" rx="5" fill="#18283d" stroke="#b4c9df" stroke-width="2"/>
+        <circle cx="754" cy="163" r="6" fill="#63b3ff"/>
+        <path id="sensorBeam" d="M745 177 L600 226 L745 226Z" fill="#63b3ff" opacity=".12"/>
+        <!-- gate pivot and arm -->
+        <rect x="812" y="228" width="18" height="47" rx="4" fill="#d9e3ed"/>
+        <circle cx="821" cy="233" r="10" fill="#f7d36a" stroke="#fff0bb" stroke-width="3"/>
+        <g id="gateArm" transform="translate(821 233) rotate(-50)">
+          <rect x="-180" y="-6" width="180" height="12" rx="4" fill="#f5f7fa" stroke="#c8d4e0" stroke-width="1"/>
+          <path d="M-170 -6 H-145 V6 H-170 M-120 -6 H-95 V6 H-120 M-70 -6 H-45 V6 H-70 M-20 -6 H0 V6 H-20" fill="#e94a5c"/>
+        </g>
+        <g id="alarmLight" class="warning-light" opacity=".25"><circle cx="821" cy="205" r="8" fill="#ff4e60"/><circle cx="821" cy="205" r="14" fill="none" stroke="#ff4e60" stroke-width="2"/></g>
+        <text x="780" y="140" fill="#e8f3ff" font-size="12" text-anchor="middle">TF-Luna</text>
+        <text x="450" y="375" fill="#d8e4ef" font-size="12" text-anchor="middle">ANIMATION IS A VISUAL DEMONSTRATION — NOT A REAL GATE CONTROLLER</text>
+      </svg>
+      <div class="scene-caption"><span>Train animation responds to the latest sensor distance.</span><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Normal</span><span><i class="swatch" style="background:var(--yellow)"></i>Approaching</span><span><i class="swatch" style="background:var(--red)"></i>Fault ≤ 10 cm</span></div></div>
+    </section>
+    <aside class="panel">
+      <h2>Live Sensor Status</h2>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">MEASURED DISTANCE</div><div class="metric-value"><span id="distance">--</span><span style="font-size:15px;color:var(--muted)"> cm</span></div><div class="metric-foot" id="distanceHint">Waiting for device data</div></div>
+        <div class="metric"><div class="metric-label">GATE SIMULATION</div><div class="metric-value status blue" id="gateStatus">UNKNOWN</div><div class="metric-foot">Visual status only</div></div>
+        <div class="metric"><div class="metric-label">TRAIN APPROACH</div><div class="metric-value status blue" id="approachStatus">NO DATA</div><div class="metric-foot">Based on distance bands</div></div>
+        <div class="metric"><div class="metric-label">FAULT THRESHOLD</div><div class="metric-value">≤ 10 <span style="font-size:14px">cm</span></div><div class="metric-foot" id="faultState">No fault reported</div></div>
+      </div>
+      <div style="margin-top:18px"><div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted)"><span>Distance scale (0–800 cm)</span><span id="scaleValue">--</span></div><div class="bar-wrap"><div id="distanceBar" class="bar"></div></div></div>
+      <div class="connection" id="lastUpdate">Last update: —</div>
+    </aside>
   </div>
 
-  <!-- Chart + Log -->
-  <div class="row cols-2">
-    <div class="card">
-      <h2>Distance Timeline (last 60 s)</h2>
-      <canvas id="chart"></canvas>
-    </div>
-
-    <div class="card">
-      <h2>Live Data Log</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Distance (cm)</th>
-              <th>Amplitude</th>
-            </tr>
-          </thead>
-          <tbody id="logBody"></tbody>
-        </table>
-      </div>
-      <div class="actions">
-        <button class="primary" onclick="downloadCSV()">⬇ Download CSV</button>
-        <button class="danger"  onclick="clearLog()">🗑 Clear Log</button>
-      </div>
-    </div>
+  <div class="two">
+    <section class="panel">
+      <h2>Firebase Device Connection</h2>
+      <label for="deviceUid" class="small" style="display:block;margin:0 0 8px">ESP32 anonymous user UID (from Serial Monitor)</label>
+      <div class="formrow"><input id="deviceUid" placeholder="Paste ESP32 auth.token.uid here" autocomplete="off"><button id="connectBtn" class="btn">Connect</button></div>
+      <p class="small">This page signs in anonymously, then reads <code>/TF_Luna/DEVICE_UID/latest</code> and <code>/TF_Luna/DEVICE_UID/fault_log</code>. The web user needs read permission for this device path.</p>
+      <div id="dbStatus" class="connection">Firebase not connected yet.</div>
+    </section>
+    <section class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Recent Fault Log</h2><span id="faultCount" class="pill">0 records</span></div>
+      <div id="faultList" class="loglist" style="margin-top:14px"><div class="empty">Connect to Firebase to load fault history.</div></div>
+    </section>
   </div>
-
 </main>
+<footer>RailGuard demo dashboard • Data is read from Firebase Realtime Database. The distance threshold and gate states are demonstration logic only; do not use this page as a railway safety or gate-control system.</footer>
 
-<footer>
-  RailGuard · Edge LiDAR Monitoring · TF-Luna · ESP32
-</footer>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { getDatabase, ref, onValue, query, limitToLast } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 
-<script>
-/* ========== CONFIG ========== */
-const ESP32_IP = "192.168.1.XXX";         // ← change to your ESP32 IP
-const WS_URL   = `ws://${ESP32_IP}:81/`;
+const firebaseConfig = {
+  apiKey: "AIzaSyAo9SpiWYTGR2t7uqWNT2v27kb3nl6Z5gM",
+  authDomain: "multi--object-tracking.firebaseapp.com",
+  databaseURL: "https://multi--object-tracking-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "multi--object-tracking",
+  storageBucket: "multi--object-tracking.firebasestorage.app",
+  messagingSenderId: "627693413866",
+  appId: "1:627693413866:web:a790305e37a87bc52cbe93"
+};
 
-const THRESH_DANGER  = 100;   // cm — intrusion
-const THRESH_WARNING = 300;   // cm — approaching
-
-/* ========== STATE ========== */
-let ws;
-let history   = [];          // {t, d}
-let logRows   = [];          // {t, d, a}
-let frameCount = 0;
-let lastRateTs = Date.now();
-
-/* ========== DOM ========== */
 const $ = id => document.getElementById(id);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+let stopLatest = null, stopFaults = null, lastGoodDistance = null;
+const params = new URLSearchParams(location.search);
+if (params.get("uid")) $("deviceUid").value = params.get("uid");
 
-/* ========== WEBSOCKET ========== */
-function connect() {
-  ws = new WebSocket(WS_URL);
-
-  ws.onopen = () => {
-    $('conn').className = 'conn online';
-    $('connText').textContent = 'Connected';
-  };
-
-  ws.onclose = () => {
-    $('conn').className = 'conn offline';
-    $('connText').textContent = 'Reconnecting…';
-    setTimeout(connect, 2000);
-  };
-
-  ws.onerror = () => ws.close();
-
-  ws.onmessage = e => {
-    const data = JSON.parse(e.data);
-    if (!data.valid) return;
-    frameCount++;
-    handleSample(data);
-  };
+function setConnection(ok, message) {
+  $("liveDot").classList.toggle("live", ok);
+  $("connectionText").textContent = message;
 }
-
-/* ========== SAMPLE HANDLER ========== */
-function handleSample(d) {
-  const now = new Date();
-  const t   = now.toLocaleTimeString('en-GB');
-
-  /* Metric cards */
-  $('distance').textContent  = d.distance;
-  $('amplitude').textContent = d.amplitude;
-  $('uptime').textContent    = d.uptime;
-
-  /* Amplitude bar */
-  const ampPct = Math.min(100, (d.amplitude / 5000) * 100);
-  $('ampFill').style.width = ampPct + '%';
-
-  /* Status banner */
-  const banner = $('statusBanner');
-  if (d.distance < THRESH_DANGER) {
-    banner.className = 'danger';
-    banner.textContent = '🚨 DANGER — Object intruding into track zone';
-  } else if (d.distance < THRESH_WARNING) {
-    banner.className = 'warning';
-    banner.textContent = '⚠️ WARNING — Object approaching monitored zone';
-  } else {
-    banner.className = 'safe';
-    banner.textContent = '✅ Track clear — monitoring active';
-  }
-
-  /* History for chart */
-  history.push({ t: now, d: d.distance });
-  if (history.length > 600) history.shift();
-  drawChart();
-
-  /* Log table */
-  logRows.unshift({ t, d: d.distance, a: d.amplitude });
-  if (logRows.length > 200) logRows.pop();
-  renderLog();
-
-  /* Rate */
-  const ts = Date.now();
-  if (ts - lastRateTs >= 1000) {
-    $('rate').textContent = frameCount;
-    frameCount = 0;
-    lastRateTs = ts;
-  }
+function dateLabel(value) {
+  if (typeof value === "number" && value > 1e12) return new Date(value).toLocaleString();
+  if (typeof value === "string" && !/^\d+$/.test(value)) return value;
+  return "Device uptime: " + (Number(value || 0) / 1000).toFixed(1) + " s";
 }
-
-/* ========== LOG TABLE ========== */
-function renderLog() {
-  const body = $('logBody');
-  body.innerHTML = logRows.slice(0, 80).map(r =>
-    `<tr><td>${r.t}</td><td>${r.d}</td><td>${r.a}</td></tr>`
-  ).join('');
+function setScene(distance, fault) {
+  const train = $("train"), gate = $("gateArm");
+  // Scene position is a visual distance-band representation, not a calibrated scale.
+  const d = Math.max(0, Math.min(800, Number(distance) || 0));
+  const x = 560 - (800 - d) / 800 * 500; // 60..560
+  train.setAttribute("transform", `translate(${x} 0)`);
+  let angle = -50, gateText = "OPEN", approach = "CLEAR", color = "var(--green)";
+  if (fault) { angle = 0; gateText = "FAULT"; approach = "CRITICAL"; color = "var(--red)"; }
+  else if (d <= 100) { angle = 0; gateText = "CLOSED*"; approach = "VERY NEAR"; color = "var(--red)"; }
+  else if (d <= 300) { angle = -12; gateText = "CLOSING*"; approach = "APPROACHING"; color = "var(--yellow)"; }
+  else if (d <= 500) { angle = -30; gateText = "READY*"; approach = "NEAR"; color = "var(--yellow)"; }
+  gate.setAttribute("transform", `translate(821 233) rotate(${angle})`);
+  $("gateStatus").textContent = gateText;
+  $("gateStatus").style.color = color;
+  $("approachStatus").textContent = approach;
+  $("approachStatus").style.color = color;
+  $("sceneStatus").textContent = fault ? "FAULT ≤ 10 CM" : (d <= 300 ? "TRAIN NEAR" : "MONITORING");
+  $("sceneStatus").style.color = color;
+  $("alarmLight").setAttribute("opacity", fault || d <= 100 ? "1" : d <= 300 ? ".65" : ".2");
+  $("distanceBar").style.width = (d / 800 * 100) + "%";
+  $("distanceBar").style.background = color;
+  $("scaleValue").textContent = d + " cm";
+  $("faultState").textContent = fault ? "FAULT ACTIVE" : "No active threshold fault";
+  $("faultState").style.color = fault ? "var(--red)" : "var(--green)";
+  $("distanceHint").textContent = fault ? "At or below configured threshold" : d <= 300 ? "Near-range warning band" : "Above warning band";
 }
-
-/* ========== CHART ========== */
-const canvas = $('chart');
-const ctx    = canvas.getContext('2d');
-
-function resizeCanvas() {
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width  = canvas.clientWidth  * dpr;
-  canvas.height = canvas.clientHeight * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-window.addEventListener('resize', () => { resizeCanvas(); drawChart(); });
-resizeCanvas();
-
-function drawChart() {
-  const W = canvas.clientWidth;
-  const H = canvas.clientHeight;
-  ctx.clearRect(0, 0, W, H);
-
-  const maxDist = 800;
-
-  /* Grid */
-  ctx.strokeStyle = 'rgba(33,44,64,0.6)';
-  ctx.lineWidth = 1;
-  for (let i = 1; i <= 4; i++) {
-    const y = (H / 4) * i;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
-
-  /* Danger threshold */
-  const dy = H - (THRESH_DANGER / maxDist) * H;
-  ctx.strokeStyle = 'rgba(239,68,68,0.55)';
-  ctx.setLineDash([6, 6]);
-  ctx.beginPath();
-  ctx.moveTo(0, dy);
-  ctx.lineTo(W, dy);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  if (history.length < 2) return;
-
-  /* Distance line */
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, 'rgba(56,189,248,0.35)');
-  grad.addColorStop(1, 'rgba(56,189,248,0)');
-
-  ctx.beginPath();
-  history.forEach((p, i) => {
-    const x = (i / (history.length - 1)) * W;
-    const y = H - Math.min(p.d, maxDist) / maxDist * H;
-    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  });
-  ctx.strokeStyle = '#38bdf8';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.lineTo(W, H);
-  ctx.lineTo(0, H);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
-}
-
-/* ========== DATA LOGGER: CSV DOWNLOAD ========== */
-function downloadCSV() {
-  if (logRows.length === 0) {
-    alert('No data to export yet.');
+function showLatest(data) {
+  if (!data || typeof data.distance_cm !== "number") {
+    $("dbStatus").textContent = "Connected, but no numeric distance_cm found at /latest.";
     return;
   }
-  const header = 'time,distance_cm,amplitude\n';
-  const rows = [...logRows].reverse()
-    .map(r => `${r.t},${r.d},${r.a}`).join('\n');
-  const blob = new Blob([header + rows], { type: 'text/csv' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = `railguard_log_${Date.now()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  lastGoodDistance = data.distance_cm;
+  const fault = data.fault_active === true || data.distance_cm <= Number(data.threshold_cm || 10);
+  $("distance").textContent = data.distance_cm;
+  $("lastUpdate").textContent = "Last update: " + new Date().toLocaleTimeString() + " • " + dateLabel(data.uptime_ms);
+  $("dbStatus").textContent = "Receiving live readings from /latest.";
+  setConnection(true, "LIVE FIREBASE DATA");
+  setScene(data.distance_cm, fault);
 }
-
-/* ========== CLEAR ========== */
-function clearLog() {
-  if (!confirm('Clear all logged data?')) return;
-  logRows = [];
-  renderLog();
+function showFaults(data) {
+  const list = $("faultList");
+  list.replaceChildren();
+  const entries = data ? Object.entries(data).reverse().slice(0, 25) : [];
+  $("faultCount").textContent = `${entries.length} record${entries.length === 1 ? "" : "s"}`;
+  if (!entries.length) {
+    list.innerHTML = '<div class="empty">No fault records found for this device.</div>';
+    return;
+  }
+  for (const [key, item] of entries) {
+    const row = document.createElement("div"); row.className = "log";
+    const left = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = `${item.fault_type || "DISTANCE FAULT"} • ${item.distance_cm ?? "--"} cm`;
+    const small = document.createElement("small");
+    small.textContent = `${item.status || "RECORDED"} · ${dateLabel(item.timestamp || item.uptime_ms)}`;
+    left.append(title, small);
+    const right = document.createElement("span"); right.className = "status fault"; right.textContent = "FAULT";
+    row.append(left, right); list.append(row);
+  }
 }
-
-/* ========== START ========== */
-connect();
+async function connectDevice() {
+  const uid = $("deviceUid").value.trim();
+  if (!uid || /[.#$\[\]\/]/.test(uid)) {
+    $("dbStatus").textContent = "Enter the ESP32 anonymous UID. Do not enter the whole database path.";
+    return;
+  }
+  $("dbStatus").textContent = "Signing in anonymously…";
+  try {
+    await signInAnonymously(auth);
+    if (stopLatest) stopLatest();
+    if (stopFaults) stopFaults();
+    const base = `TF_Luna/${uid}`;
+    stopLatest = onValue(ref(db, `${base}/latest`), snap => {
+      if (snap.exists()) showLatest(snap.val());
+      else $("dbStatus").textContent = "No /latest data found. Check the UID and ESP32 upload path.";
+    }, err => {
+      $("dbStatus").textContent = "Latest read failed: " + err.message;
+      setConnection(false, "DATABASE PERMISSION ERROR");
+    });
+    stopFaults = onValue(query(ref(db, `${base}/fault_log`), limitToLast(25)), snap => {
+      showFaults(snap.val());
+    }, err => {
+      $("faultList").innerHTML = '<div class="empty">Fault log read denied: ' + err.message.replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c])) + '</div>';
+    });
+    $("dbStatus").textContent = "Firebase signed in. Waiting for device data…";
+    setConnection(false, "CONNECTED • WAITING FOR DATA");
+  } catch (err) {
+    $("dbStatus").textContent = "Firebase sign-in failed: " + err.message;
+    setConnection(false, "SIGN-IN ERROR");
+  }
+}
+$("connectBtn").addEventListener("click", connectDevice);
+$("deviceUid").addEventListener("keydown", e => { if (e.key === "Enter") connectDevice(); });
+signInAnonymously(auth).then(() => {
+  $("dbStatus").textContent = "Anonymous web sign-in successful. Enter the ESP32 UID and press Connect.";
+}).catch(err => {
+  $("dbStatus").textContent = "Anonymous sign-in failed: " + err.message;
+});
 </script>
-
 </body>
-</html>
+</html>'''
+
+path = Path("/mnt/data/index.html")
+path.write_text(html, encoding="utf-8")
+print(f"Created {path} ({len(html)} characters)")
