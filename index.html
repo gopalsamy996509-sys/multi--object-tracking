@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>铁路 LiDAR 边缘监测</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0a0e17;
+            color: #e0e6f0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 1px solid #1e2a3a;
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 1.6rem; font-weight: 500; letter-spacing: 2px; }
+        .header .status {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            background: #1a2332;
+        }
+        .status.online { background: #0d3b1e; color: #4ade80; }
+        .status.offline { background: #3b0d0d; color: #f87171; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #111827;
+            border: 1px solid #1e2a3a;
+            border-radius: 12px;
+            padding: 24px;
+        }
+        .card h2 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #6b7a8f;
+            margin-bottom: 16px;
+        }
+        .distance-value {
+            font-size: 3rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        .distance-value .unit {
+            font-size: 1.2rem;
+            color: #6b7a8f;
+            margin-left: 4px;
+        }
+        .amplitude-bar {
+            height: 8px;
+            background: #1e2a3a;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+        .amplitude-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80);
+            transition: width 0.15s;
+            width: 0%;
+        }
+        .alarm {
+            margin-top: 16px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .alarm.safe { background: #0d3b1e; color: #4ade80; }
+        .alarm.warning { background: #3b2e0d; color: #fbbf24; }
+        .alarm.danger { background: #3b0d0d; color: #f87171; animation: pulse 0.8s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        canvas { width: 100%; height: 160px; margin-top: 8px; }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #1e2a3a;
+            font-size: 0.9rem;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-row .label { color: #6b7a8f; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🚆 铁路 LiDAR 边缘监测</h1>
+    <div id="wsStatus" class="status offline">WebSocket 未连接</div>
+</div>
+
+<div class="grid">
+    <div class="card">
+        <h2>实时距离</h2>
+        <div class="distance-value">
+            <span id="distance">--</span><span class="unit">cm</span>
+        </div>
+        <div class="amplitude-bar">
+            <div id="ampBar" class="amplitude-fill"></div>
+        </div>
+        <div id="alarm" class="alarm safe">监测中</div>
+    </div>
+
+    <div class="card">
+        <h2>距离趋势</h2>
+        <canvas id="chart"></canvas>
+        <div class="info-row">
+            <span class="label">信号强度</span>
+            <span id="amplitude">--</span>
+        </div>
+        <div class="info-row">
+            <span class="label">数据帧率</span>
+            <span id="rate">0 Hz</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ===== 配置 =====
+    const ESP32_IP = "192.168.1.XXX";  // 替换为 ESP32 的 IP
+    const WS_URL = `ws://${ESP32_IP}:81/`;
+
+    // ===== 报警阈值（铁路场景建议值）=====
+    const THRESHOLD_DANGER = 100;   // < 1m: 危险（物体侵入轨道）
+    const THRESHOLD_WARNING = 300;  // 1-3m: 警告（物体接近轨道）
+    // > 3m: 安全
+
+    // ===== 状态 =====
+    let ws;
+    let history = [];
+    let frameCount = 0;
+    let lastRateUpdate = Date.now();
+
+    // ===== 图表初始化 =====
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth * 2;
+    canvas.height = canvas.offsetHeight * 2;
+
+    // ===== WebSocket 连接 =====
+    function connect() {
+        ws = new WebSocket(WS_URL);
+
+        ws.onopen = () => {
+            document.getElementById('wsStatus').textContent = "WebSocket 已连接";
+            document.getElementById('wsStatus').className = "status online";
+        };
+
+        ws.onclose = () => {
+            document.getElementById('wsStatus').textContent = "WebSocket 断开，重连中...";
+            document.getElementById('wsStatus').className = "status offline";
+            setTimeout(connect, 2000);
+        };
+
+        ws.onerror = () => ws.close();
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (!data.valid) return;
+
+            frameCount++;
+            updateUI(data);
+        };
+    }
+
+    function updateUI(data) {
+        // 距离显示
+        document.getElementById('distance').textContent = data.distance;
+        document.getElementById('amplitude').textContent = data.amplitude;
+
+        // 信号强度条
+        const ampPercent = Math.min(100, (data.amplitude / 5000) * 100);
+        document.getElementById('ampBar').style.width = ampPercent + '%';
+
+        // 报警逻辑
+        const alarm = document.getElementById('alarm');
+        if (data.distance < THRESHOLD_DANGER) {
+            alarm.textContent = "🚨 危险：物体侵入轨道！";
+            alarm.className = "alarm danger";
+        } else if (data.distance < THRESHOLD_WARNING) {
+            alarm.textContent = "⚠️ 警告：物体接近监测区";
+            alarm.className = "alarm warning";
+        } else {
+            alarm.textContent = "✅ 监测中：轨道正常";
+            alarm.className = "alarm safe";
+        }
+
+        // 历史数据
+        history.push(data.distance);
+        if (history.length > 60) history.shift();
+
+        drawChart();
+
+        // 帧率统计
+        const now = Date.now();
+        if (now - lastRateUpdate >= 1000) {
+            document.getElementById('rate').textContent = frameCount + " Hz";
+            frameCount = 0;
+            lastRateUpdate = now;
+        }
+    }
+
+    function drawChart() {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        if (history.length < 2) return;
+
+        const maxDist = 800; // 8m 满量程
+
+        // 网格线
+        ctx.strokeStyle = '#1e2a3a';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = (h / 4) * i;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+        }
+
+        // 距离曲线
+        ctx.beginPath();
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = 3;
+
+        history.forEach((d, i) => {
+            const x = (i / (history.length - 1)) * w;
+            const y = h - (d / maxDist) * h;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // 危险阈值线
+        const dangerY = h - (THRESHOLD_DANGER / maxDist) * h;
+        ctx.beginPath();
+        ctx.strokeStyle = '#f87171';
+        ctx.setLineDash([6, 6]);
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(0, dangerY);
+        ctx.lineTo(w, dangerY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // ===== 启动 =====
+    connect();
+</script>
+
+</body>
+</html>
