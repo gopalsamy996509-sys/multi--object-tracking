@@ -1,3 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RailGuard Live Monitor</title>
+<style>
+:root{color-scheme:dark;--bg:#08111f;--panel:#142239;--line:#26374e;--muted:#9eb0c8;--text:#edf4ff;--green:#36d399;--yellow:#ffc857;--red:#ff5d6c;--blue:#63b3ff}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 15% 0%,#172944,transparent 38%),var(--bg);color:var(--text);font:15px/1.45 system-ui,Segoe UI,Arial}
+header{padding:22px clamp(16px,4vw,42px);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{display:flex;gap:12px;align-items:center}
+.logo{background:linear-gradient(135deg,#3a8dff,#36d399);border-radius:14px;padding:11px;font-size:24px}
+h1{font-size:clamp(21px,3vw,29px);margin:0}
+.sub,.muted{color:var(--muted);font-size:12px}
+.pill{border:1px solid var(--line);padding:8px 12px;border-radius:999px;color:var(--muted);font-size:12px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#8190a5;margin-right:7px}
+.dot.live{background:var(--green)}
+main{max-width:1400px;margin:auto;padding:22px clamp(14px,3vw,34px)}
+.grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,1fr);gap:18px}
+.panel{background:linear-gradient(180deg,#142239,#101a2b);border:1px solid var(--line);border-radius:18px;padding:18px;min-width:0}
+.scenePanel{padding:0;overflow:hidden}
+.sceneHead{padding:17px 18px 0;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.scene{display:block;width:100%;height:auto}
+.caption{padding:0 18px 16px;color:var(--muted);font-size:12px}
+h2{font-size:16px;margin:0 0 14px}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.metric{background:#0b1728;border:1px solid var(--line);border-radius:14px;padding:14px}
+.label{font-size:11px;color:var(--muted)}
+.value{font-size:clamp(24px,3vw,34px);font-weight:750;margin:5px 0}
+.status{font-weight:750;color:var(--blue)}
+.barWrap{height:9px;background:#25354b;border-radius:99px;overflow:hidden;margin-top:10px}
+.bar{height:100%;width:0;background:var(--green);transition:width .3s,background .3s}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.form{display:flex;gap:8px;flex-wrap:wrap}
+.btn{background:#3182f6;color:white;border:0;border-radius:10px;padding:11px 15px;font-weight:700;cursor:pointer}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+.loglist{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto}
+.log{background:#1b1b2b;border:1px solid #3a2c3d;border-radius:11px;padding:10px;display:flex;justify-content:space-between;gap:10px}
+.log strong{display:block;color:#ff8792}
+.empty{padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+.note{font-size:12px;color:var(--muted);margin:10px 0 0;overflow-wrap:anywhere}
+code{background:#091526;padding:2px 5px;border-radius:5px;font-size:12px}
+footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
+@keyframes wheel{to{transform:rotate(360deg)}}
+.wheel{transform-box:fill-box;transform-origin:center;animation:wheel 1s linear infinite}
+@media(max-width:900px){.grid,.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">🚦</div>
+    <div>
+      <h1>RailGuard <span style="color:#63b3ff">Live Monitor</span></h1>
+      <div class="sub">TF-Luna distance • Train approach visualization • Gate status</div>
+    </div>
+  </div>
+  <div class="pill"><span id="dot" class="dot"></span><span id="conn">Waiting for Firebase connection</span></div>
+</header>
+
+<main>
+  <div class="grid">
+    <section class="panel scenePanel">
+      <div class="sceneHead">
+        <h2>2D Railway Crossing Simulation</h2>
+        <span id="sceneStatus" class="status">WAITING FOR DATA</span>
+      </div>
+
+      <svg class="scene" viewBox="0 0 900 390" role="img" aria-label="2D train and crossing animation">
+        <defs>
+          <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#142b49"/><stop offset="1" stop-color="#263d59"/></linearGradient>
+          <linearGradient id="body" x2="0" y2="1"><stop stop-color="#ff6a75"/><stop offset="1" stop-color="#c82e48"/></linearGradient>
+          <pattern id="sleepers" width="42" height="22" patternUnits="userSpaceOnUse"><rect x="4" width="8" height="22" rx="2" fill="#6c7d91"/></pattern>
+        </defs>
+
+        <rect width="900" height="390" fill="url(#sky)"/>
+        <circle cx="755" cy="58" r="24" fill="#f6dca0"/>
+        <path d="M0 195L105 100 190 165 295 83 410 183 515 112 630 177 740 96 900 190V270H0Z" fill="#294b61"/>
+        <path d="M0 230Q180 195 330 232T650 225T900 218V390H0Z" fill="#1d574f"/>
+        <path d="M0 263H900V390H0Z" fill="#35404c"/>
+        <path d="M0 246H900V286H0Z" fill="#69717a"/>
+        <path d="M0 266H900" stroke="#f8d56c" stroke-width="3" stroke-dasharray="26 20"/>
+        <rect x="0" y="294" width="900" height="52" fill="url(#sleepers)"/>
+        <path d="M0 300H900M0 340H900" stroke="#dce4ed" stroke-width="4"/>
+
+        <rect x="38" y="120" width="105" height="60" rx="5" fill="#10233a" stroke="#91b8d6" stroke-width="2"/>
+        <text x="90" y="145" fill="#e9f4ff" text-anchor="middle" font-size="12" font-weight="700">RAILWAY</text>
+        <text x="90" y="162" fill="#7bd4ff" text-anchor="middle" font-size="12">CROSSING</text>
+
+        <g id="train" transform="translate(390 0)">
+          <rect x="0" y="190" width="290" height="84" rx="10" fill="url(#body)" stroke="#ffb0b6" stroke-width="2"/>
+          <rect x="18" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+          <rect x="80" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+          <rect x="133" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+          <rect x="186" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+          <rect x="242" y="202" width="28" height="34" rx="4" fill="#f7d36a"/>
+          <rect x="0" y="245" width="290" height="12" fill="#8c253b"/>
+          <circle class="wheel" cx="45" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
+          <circle class="wheel" cx="235" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
+          <text x="145" y="241" fill="#fff" text-anchor="middle" font-size="13" font-weight="800">TRAIN</text>
+        </g>
+
+        <rect x="750" y="160" width="9" height="100" rx="3" fill="#a9b8c9"/>
+        <rect x="735" y="151" width="39" height="24" rx="5" fill="#18283d" stroke="#b4c9df" stroke-width="2"/>
+        <circle cx="754" cy="163" r="6" fill="#63b3ff"/>
+        <rect x="812" y="228" width="18" height="47" rx="4" fill="#d9e3ed"/>
+        <circle cx="821" cy="233" r="10" fill="#f7d36a" stroke="#fff0bb" stroke-width="3"/>
+        <g id="gateArm" transform="translate(821 233) rotate(-50)">
+          <rect x="-180" y="-6" width="180" height="12" rx="4" fill="#f5f7fa"/>
+          <path d="M-170 -6H-145V6H-170M-120 -6H-95V6H-120M-70 -6H-45V6H-70M-20 -6H0V6H-20" fill="#e94a5c"/>
+        </g>
+        <g id="alarm" opacity=".2">
+          <circle cx="821" cy="205" r="8" fill="#ff4e60"/>
+          <circle cx="821" cy="205" r="14" fill="none" stroke="#ff4e60" stroke-width="2"/>
+        </g>
+
+        <text x="780" y="140" fill="#e8f3ff" font-size="12" text-anchor="middle">TF-Luna</text>
+        <text x="450" y="375" fill="#d8e4ef" font-size="12" text-anchor="middle">VISUAL DEMO ONLY — NOT A REAL GATE CONTROLLER</text>
+      </svg>
+
+      <div class="caption">Train animation follows Firebase distance. Gate closes below 50 cm; otherwise open.</div>
+    </section>
+
+    <aside class="panel">
+      <h2>Live Sensor Status</h2>
+      <div class="metrics">
+        <div class="metric">
+          <div class="label">MEASURED DISTANCE</div>
+          <div class="value"><span id="distance">--</span><span style="font-size:14px;color:var(--muted)"> cm</span></div>
+          <div id="distanceHint" class="muted">Waiting for device data</div>
+        </div>
+        <div class="metric">
+          <div class="label">GATE STATUS</div>
+          <div id="gateStatus" class="value status">UNKNOWN</div>
+          <div class="muted">Simulated from distance</div>
+        </div>
+        <div class="metric">
+          <div class="label">TRAIN APPROACH</div>
+          <div id="approach" class="value status">NO DATA</div>
+          <div class="muted">Based on distance bands</div>
+        </div>
+        <div class="metric">
+          <div class="label">CLOSE THRESHOLD</div>
+          <div class="value">&lt; 50 <span style="font-size:14px">cm</span></div>
+          <div id="faultState" class="muted">Gate is open</div>
+        </div>
+      </div>
+
+      <div style="margin-top:17px">
+        <div class="muted">Distance scale (0–800 cm) <span id="scale" style="float:right">--</span></div>
+        <div class="barWrap"><div id="bar" class="bar"></div></div>
+      </div>
+      <div id="updated" class="note">Last update: —</div>
+    </aside>
+  </div>
+
+  <div class="two">
+    <section class="panel">
+      <h2>Firebase Device Connection</h2>
+      <p class="note">
+        Reading public paths <code>/TF_Luna/live</code> and <code>/TF_Luna/faults</code>.
+        No sign-in required — the Realtime Database rules must allow public reads.
+      </p>
+      <div class="form">
+        <button id="connect" class="btn">Connect</button>
+        <button id="disconnect" class="btn ghost">Disconnect</button>
+      </div>
+      <div id="dbstatus" class="note">Not connected. Press Connect to start streaming.</div>
+    </section>
+
+    <section class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <h2 style="margin:0">Recent Gate-Close Log</h2>
+        <span id="count" class="pill">0 records</span>
+      </div>
+      <div id="logs" class="loglist" style="margin-top:14px">
+        <div class="empty">Connect to load gate-close history from <code>/TF_Luna/faults</code>.</div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>RailGuard demo dashboard. Not designed or certified for real railway control or safety decisions.</footer>
+
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
 import {getDatabase,ref,onValue,query,limitToLast} from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
@@ -12,7 +198,7 @@ const firebaseConfig = {
   appId: "1:627693413866:web:a790305e37a87bc52cbe93"
 };
 
-// Gate closes when distance drops below this value
+// Gate closes when distance drops below this value (must match ESP32)
 const GATE_CLOSE_CM = 50;
 const MAX_SCALE_CM  = 800;
 
@@ -25,6 +211,7 @@ let stopLogs = null;
 let heartbeatTimer = null;
 let lastPacketAt = 0;
 
+/* ---------- connection indicator ---------- */
 function setConnection(ok, text) {
   $("dot").classList.toggle("live", ok);
   $("conn").textContent = text;
@@ -36,7 +223,7 @@ function updateScene(distance, gateClosed) {
   const x = 60 + (d / MAX_SCALE_CM) * 500;
   $("train").setAttribute("transform", `translate(${x} 0)`);
 
-  let angle = -50;            // -50 = open, 0 = closed
+  let angle = -50;          // -50 = open, 0 = closed
   let gate, approach, color;
 
   if (gateClosed) {
@@ -73,9 +260,7 @@ function updateScene(distance, gateClosed) {
   $("bar").style.background = color;
   $("scale").textContent = d + " cm";
 
-  $("faultState").textContent = gateClosed
-    ? "Gate is CLOSED"
-    : "Gate is open";
+  $("faultState").textContent = gateClosed ? "Gate is CLOSED" : "Gate is open";
   $("faultState").style.color = gateClosed ? "var(--red)" : "var(--green)";
 
   $("distanceHint").textContent = gateClosed
@@ -95,7 +280,7 @@ function showLatest(v) {
     return;
   }
 
-  // Trust the gate flag sent by the device; fall back to the local rule.
+  // Trust the flag sent by the device; fall back to the local rule.
   const gateClosed = (v.gate_closed === true) || (d < GATE_CLOSE_CM);
 
   $("distance").textContent = d;
@@ -207,3 +392,5 @@ $("disconnect").addEventListener("click", () => {
 $("dbstatus").textContent =
   "Authentication disabled. Press Connect; database rules must allow public reads.";
 </script>
+</body>
+</html>
