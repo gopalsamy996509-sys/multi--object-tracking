@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RailGuard Live Monitor</title>
+<title>RailGuard 3D Live Monitor</title>
 <style>
 :root{color-scheme:dark;--bg:#08111f;--panel:#142239;--line:#26374e;--muted:#9eb0c8;--text:#edf4ff;--green:#36d399;--yellow:#ffc857;--red:#ff5d6c;--blue:#63b3ff}
 *{box-sizing:border-box}
@@ -21,7 +21,6 @@ main{max-width:1400px;margin:auto;padding:22px clamp(14px,3vw,34px)}
 .panel{background:linear-gradient(180deg,#142239,#101a2b);border:1px solid var(--line);border-radius:18px;padding:18px;min-width:0}
 .scenePanel{padding:0;overflow:hidden}
 .sceneHead{padding:17px 18px 0;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.scene{display:block;width:100%;height:auto}
 .caption{padding:0 18px 16px;color:var(--muted);font-size:12px}
 h2{font-size:16px;margin:0 0 14px}
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -42,9 +41,309 @@ h2{font-size:16px;margin:0 0 14px}
 .note{font-size:12px;color:var(--muted);margin:10px 0 0;overflow-wrap:anywhere}
 code{background:#091526;padding:2px 5px;border-radius:5px;font-size:12px}
 footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
-@keyframes wheel{to{transform:rotate(360deg)}}
-.wheel{transform-box:fill-box;transform-origin:center;animation:wheel 1s linear infinite}
 @media(max-width:900px){.grid,.two{grid-template-columns:1fr}}
+
+/* ============================================================
+   3D RAILWAY CROSSING SCENE
+   ============================================================ */
+.scene3d{
+  position:relative;
+  width:100%;
+  height:440px;
+  perspective:900px;
+  perspective-origin:50% 30%;
+  overflow:hidden;
+  background:linear-gradient(180deg,#0b1a30 0%,#142b49 45%,#1d3a4a 70%,#123 100%);
+  border-bottom:1px solid var(--line);
+}
+/* Sky glow + sun */
+.scene3d::before{
+  content:"";
+  position:absolute;
+  top:8%; left:78%;
+  width:70px; height:70px;
+  border-radius:50%;
+  background:radial-gradient(circle,#fff2c2,#ffce6a 60%,transparent 75%);
+  box-shadow:0 0 80px 30px rgba(255,206,106,.25);
+}
+/* Distant mountains */
+.mountains{
+  position:absolute;
+  bottom:56%;
+  left:0; right:0;
+  height:110px;
+  background:
+    linear-gradient(135deg,transparent 48%,#1d3a56 48%,#1d3a56 52%,transparent 52%) 0 0/220px 110px repeat-x,
+    linear-gradient(135deg,transparent 48%,#21475f 48%,#21475f 52%,transparent 52%) 60px 30px/260px 90px repeat-x;
+  opacity:.85;
+}
+
+/* The 3D stage: rotated ground plane */
+.stage{
+  position:absolute;
+  left:50%;
+  top:56%;
+  width:1800px;
+  height:1400px;
+  transform:translate(-50%,0) rotateX(72deg);
+  transform-style:preserve-3d;
+  transform-origin:center top;
+}
+
+/* Ground */
+.ground{
+  position:absolute;
+  inset:0;
+  background:
+    radial-gradient(ellipse at 50% 30%,#2a5a4a 0%,#183228 60%,#0c1a17 100%);
+  border-radius:50% 50% 0 0;
+}
+
+/* Road across the track (goes away from viewer) */
+.road{
+  position:absolute;
+  left:50%; top:0; bottom:0;
+  width:170px;
+  margin-left:-85px;
+  background:
+    repeating-linear-gradient(180deg,#2c333d 0 18px,#2c333d 18px,#2f3640 18px 22px),
+    #2c333d;
+  box-shadow:inset 0 0 40px rgba(0,0,0,.55);
+}
+.road::before,.road::after{
+  content:"";
+  position:absolute;
+  top:0; bottom:0;
+  width:5px;
+  background:repeating-linear-gradient(180deg,#f8d56c 0 22px,transparent 22px 40px);
+}
+.road::before{left:50%;transform:translateX(-50%)}
+.road::after{display:none}
+
+/* Rails + sleepers using 3D transform */
+.rail{
+  position:absolute;
+  left:0; right:0;
+  height:16px;
+  background:linear-gradient(180deg,#dce4ed,#8a94a3);
+  border-radius:4px;
+  box-shadow:0 6px 14px rgba(0,0,0,.5);
+}
+.rail.track1{ top:280px; }
+.rail.track2{ top:300px; }
+.sleepers{
+  position:absolute;
+  left:0; right:0; top:274px;
+  height:52px;
+  background:
+    repeating-linear-gradient(90deg,
+      transparent 0 34px,
+      #6c7d91 34px 42px,
+      transparent 42px 76px);
+  opacity:.9;
+}
+
+/* ============================================================
+   THE TRAIN — 3D box with cab, windows, wheels
+   ============================================================ */
+.train3d{
+  position:absolute;
+  top:236px;
+  left:0;
+  width:340px;
+  height:110px;
+  transform-style:preserve-3d;
+  transform:translate3d(0,0,0) translateZ(30px);
+  transition:transform .45s cubic-bezier(.2,.7,.3,1);
+  will-change:transform;
+}
+.train-body{
+  position:absolute;
+  inset:0;
+  border-radius:14px;
+  background:linear-gradient(180deg,#ff7a86 0%,#e84257 45%,#9c2036 100%);
+  box-shadow:
+    0 18px 40px rgba(0,0,0,.55),
+    inset 0 -12px 22px rgba(0,0,0,.35),
+    inset 0 6px 12px rgba(255,255,255,.25);
+  transform:translateZ(20px);
+}
+/* Front face of the train (facing the viewer) */
+.train-body::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:14px;
+  background:linear-gradient(180deg,#ff8c98,#d4344a);
+  transform:translateZ(20px);
+}
+/* Underbody shadow stripe */
+.train-body::after{
+  content:"";
+  position:absolute;
+  left:0; right:0; bottom:14px;
+  height:14px;
+  background:linear-gradient(180deg,#7a1a2e,#4a0f1e);
+  border-radius:0 0 14px 14px;
+}
+/* Windows row */
+.train-windows{
+  position:absolute;
+  left:18px; right:18px; top:20px;
+  height:34px;
+  display:flex;
+  gap:10px;
+  transform:translateZ(22px);
+}
+.win{
+  flex:1;
+  border-radius:6px;
+  background:
+    linear-gradient(180deg,#e6f7ff 0%,#9ed7f2 40%,#4aa7d9 100%);
+  box-shadow:inset 0 0 6px rgba(255,255,255,.8),0 2px 4px rgba(0,0,0,.4);
+  border:2px solid #eefaff;
+}
+/* Front cab window */
+.train-cab{
+  position:absolute;
+  right:8px; top:8px;
+  width:38px; height:82px;
+  border-radius:8px;
+  background:linear-gradient(180deg,#fff5c9,#f7d36a);
+  box-shadow:inset 0 0 8px rgba(0,0,0,.3),0 0 20px rgba(247,211,106,.6);
+  transform:translateZ(24px);
+  border:2px solid #fff0bb;
+}
+/* Headlight */
+.train-light{
+  position:absolute;
+  right:-6px; top:50%;
+  width:14px; height:14px; margin-top:-7px;
+  border-radius:50%;
+  background:radial-gradient(circle,#fff,#ffea8a 60%,transparent 80%);
+  box-shadow:0 0 20px 8px rgba(255,234,138,.7);
+  transform:translateZ(26px);
+}
+/* Wheels — row of circles under the body */
+.train-wheels{
+  position:absolute;
+  left:0; right:0; bottom:-16px;
+  height:32px;
+  display:flex;
+  justify-content:space-around;
+  transform:translateZ(18px);
+}
+.wheel{
+  width:32px; height:32px;
+  border-radius:50%;
+  background:
+    radial-gradient(circle at 35% 30%,#3b4453,#111827 70%);
+  border:4px solid #aab6c5;
+  box-shadow:0 6px 12px rgba(0,0,0,.6);
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ============================================================
+   GATE — 3D swinging boom
+   ============================================================ */
+.gate{
+  position:absolute;
+  left:50%; top:190px;
+  width:0; height:0;
+  transform-style:preserve-3d;
+  transform:translateZ(40px);
+  z-index:5;
+}
+.gate-post{
+  position:absolute;
+  left:-14px; top:-90px;
+  width:28px; height:110px;
+  border-radius:6px;
+  background:linear-gradient(180deg,#dfe7f1,#8b96a5);
+  box-shadow:inset -4px 0 6px rgba(0,0,0,.4),0 8px 16px rgba(0,0,0,.5);
+  transform:translateZ(4px);
+}
+.gate-pivot{
+  position:absolute;
+  left:-14px; top:-90px;
+  width:28px; height:28px;
+  border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffe89c,#c79d33 70%);
+  border:3px solid #fff0bb;
+  box-shadow:0 0 14px 4px rgba(247,211,106,.5);
+  transform:translateZ(20px);
+}
+.gate-arm{
+  position:absolute;
+  left:0; top:-86px;
+  width:260px; height:14px;
+  border-radius:6px;
+  background:
+    repeating-linear-gradient(90deg,#f5f7fa 0 34px,#e94a5c 34px 46px,#f5f7fa 46px 80px,#e94a5c 80px 92px),
+    #f5f7fa;
+  box-shadow:0 6px 14px rgba(0,0,0,.55);
+  transform-origin:0 50%;
+  transform:rotateZ(0deg) translateZ(20px);
+  transition:transform .6s cubic-bezier(.4,.9,.3,1.1);
+}
+/* The gate arm swings UP (open) or DOWN (closed) via rotateZ in 3D */
+.gate-arm.closed{ transform:rotateZ(0deg) translateZ(20px); }
+.gate-arm.open  { transform:rotateZ(-85deg) translateZ(20px); }
+
+/* Warning light on the post */
+.gate-lamp{
+  position:absolute;
+  left:-8px; top:-120px;
+  width:20px; height:20px;
+  border-radius:50%;
+  background:radial-gradient(circle,#ff8a90,#ff2a3c 60%,#8a0f1d);
+  box-shadow:0 0 20px 8px rgba(255,42,60,.5);
+  transform:translateZ(20px);
+  animation:pulse 1s ease-in-out infinite;
+}
+@keyframes pulse{
+  0%,100%{opacity:.45}
+  50%{opacity:1}
+}
+.gate-lamp.calm{
+  background:radial-gradient(circle,#8fffb0,#36d399 60%,#0f7a4a);
+  box-shadow:0 0 14px 4px rgba(54,211,153,.35);
+  animation:none;
+  opacity:.8;
+}
+
+/* Ground shadow under train */
+.train-shadow{
+  position:absolute;
+  left:0;
+  top:346px;
+  width:340px;
+  height:26px;
+  border-radius:50%;
+  background:radial-gradient(ellipse,rgba(0,0,0,.6),transparent 70%);
+  transition:transform .45s cubic-bezier(.2,.7,.3,1);
+  pointer-events:none;
+}
+
+/* Distance labels */
+.scene-labels{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+}
+.dist-label{
+  position:absolute;
+  bottom:14px; left:14px;
+  background:rgba(8,17,31,.85);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:8px 12px;
+  font-size:12px;
+  color:var(--muted);
+  backdrop-filter:blur(4px);
+}
+.dist-label b{color:var(--text);font-size:16px}
 </style>
 </head>
 <body>
@@ -53,8 +352,8 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
   <div class="brand">
     <div class="logo">🚦</div>
     <div>
-      <h1>RailGuard <span style="color:#63b3ff">Live Monitor</span></h1>
-      <div class="sub">TF-Luna distance • Train approach visualization • Gate status</div>
+      <h1>RailGuard <span style="color:#63b3ff">3D Live Monitor</span></h1>
+      <div class="sub">TF-Luna distance • 3D train approach visualization • Gate status</div>
     </div>
   </div>
   <div class="pill"><span id="dot" class="dot"></span><span id="conn">Waiting for Firebase connection</span></div>
@@ -64,63 +363,56 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
   <div class="grid">
     <section class="panel scenePanel">
       <div class="sceneHead">
-        <h2>2D Railway Crossing Simulation</h2>
+        <h2>3D Railway Crossing</h2>
         <span id="sceneStatus" class="status">WAITING FOR DATA</span>
       </div>
 
-      <svg class="scene" viewBox="0 0 900 390" role="img" aria-label="2D train and crossing animation">
-        <defs>
-          <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#142b49"/><stop offset="1" stop-color="#263d59"/></linearGradient>
-          <linearGradient id="body" x2="0" y2="1"><stop stop-color="#ff6a75"/><stop offset="1" stop-color="#c82e48"/></linearGradient>
-          <pattern id="sleepers" width="42" height="22" patternUnits="userSpaceOnUse"><rect x="4" width="8" height="22" rx="2" fill="#6c7d91"/></pattern>
-        </defs>
+      <div class="scene3d" id="scene3d">
+        <div class="mountains"></div>
 
-        <rect width="900" height="390" fill="url(#sky)"/>
-        <circle cx="755" cy="58" r="24" fill="#f6dca0"/>
-        <path d="M0 195L105 100 190 165 295 83 410 183 515 112 630 177 740 96 900 190V270H0Z" fill="#294b61"/>
-        <path d="M0 230Q180 195 330 232T650 225T900 218V390H0Z" fill="#1d574f"/>
-        <path d="M0 263H900V390H0Z" fill="#35404c"/>
-        <path d="M0 246H900V286H0Z" fill="#69717a"/>
-        <path d="M0 266H900" stroke="#f8d56c" stroke-width="3" stroke-dasharray="26 20"/>
-        <rect x="0" y="294" width="900" height="52" fill="url(#sleepers)"/>
-        <path d="M0 300H900M0 340H900" stroke="#dce4ed" stroke-width="4"/>
+        <div class="stage">
+          <div class="ground"></div>
+          <div class="road"></div>
+          <div class="sleepers"></div>
+          <div class="rail track1"></div>
+          <div class="rail track2"></div>
 
-        <rect x="38" y="120" width="105" height="60" rx="5" fill="#10233a" stroke="#91b8d6" stroke-width="2"/>
-        <text x="90" y="145" fill="#e9f4ff" text-anchor="middle" font-size="12" font-weight="700">RAILWAY</text>
-        <text x="90" y="162" fill="#7bd4ff" text-anchor="middle" font-size="12">CROSSING</text>
+          <!-- 3D TRAIN -->
+          <div class="train3d" id="train3d">
+            <div class="train-body">
+              <div class="train-windows">
+                <div class="win"></div>
+                <div class="win"></div>
+                <div class="win"></div>
+                <div class="win"></div>
+              </div>
+              <div class="train-cab"></div>
+              <div class="train-light"></div>
+            </div>
+            <div class="train-wheels">
+              <div class="wheel"></div>
+              <div class="wheel"></div>
+              <div class="wheel"></div>
+              <div class="wheel"></div>
+            </div>
+          </div>
+          <div class="train-shadow" id="trainShadow"></div>
 
-        <g id="train" transform="translate(390 0)">
-          <rect x="0" y="190" width="290" height="84" rx="10" fill="url(#body)" stroke="#ffb0b6" stroke-width="2"/>
-          <rect x="18" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-          <rect x="80" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-          <rect x="133" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-          <rect x="186" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-          <rect x="242" y="202" width="28" height="34" rx="4" fill="#f7d36a"/>
-          <rect x="0" y="245" width="290" height="12" fill="#8c253b"/>
-          <circle class="wheel" cx="45" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
-          <circle class="wheel" cx="235" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
-          <text x="145" y="241" fill="#fff" text-anchor="middle" font-size="13" font-weight="800">TRAIN</text>
-        </g>
+          <!-- 3D GATE -->
+          <div class="gate">
+            <div class="gate-post"></div>
+            <div class="gate-pivot"></div>
+            <div class="gate-lamp" id="gateLamp"></div>
+            <div class="gate-arm open" id="gateArm"></div>
+          </div>
+        </div>
 
-        <rect x="750" y="160" width="9" height="100" rx="3" fill="#a9b8c9"/>
-        <rect x="735" y="151" width="39" height="24" rx="5" fill="#18283d" stroke="#b4c9df" stroke-width="2"/>
-        <circle cx="754" cy="163" r="6" fill="#63b3ff"/>
-        <rect x="812" y="228" width="18" height="47" rx="4" fill="#d9e3ed"/>
-        <circle cx="821" cy="233" r="10" fill="#f7d36a" stroke="#fff0bb" stroke-width="3"/>
-        <g id="gateArm" transform="translate(821 233) rotate(-50)">
-          <rect x="-180" y="-6" width="180" height="12" rx="4" fill="#f5f7fa"/>
-          <path d="M-170 -6H-145V6H-170M-120 -6H-95V6H-120M-70 -6H-45V6H-70M-20 -6H0V6H-20" fill="#e94a5c"/>
-        </g>
-        <g id="alarm" opacity=".2">
-          <circle cx="821" cy="205" r="8" fill="#ff4e60"/>
-          <circle cx="821" cy="205" r="14" fill="none" stroke="#ff4e60" stroke-width="2"/>
-        </g>
+        <div class="scene-labels">
+          <div class="dist-label">Distance <b><span id="distanceOverlay">--</span> cm</b></div>
+        </div>
+      </div>
 
-        <text x="780" y="140" fill="#e8f3ff" font-size="12" text-anchor="middle">TF-Luna</text>
-        <text x="450" y="375" fill="#d8e4ef" font-size="12" text-anchor="middle">VISUAL DEMO ONLY — NOT A REAL GATE CONTROLLER</text>
-      </svg>
-
-      <div class="caption">Train animation follows Firebase distance. Gate closes below 50 cm; otherwise open.</div>
+      <div class="caption">Train slides along the 3D track based on live distance. Gate boom swings up (open) or down (closed) in 3D.</div>
     </section>
 
     <aside class="panel">
@@ -202,6 +494,9 @@ const firebaseConfig = {
 const GATE_CLOSE_CM = 50;
 const MAX_SCALE_CM  = 800;
 
+// 3D train travel: how far the train can slide along the track in the scene
+const TRACK_LENGTH_PX = 700;   // total px the train moves from far to near
+
 const $ = id => document.getElementById(id);
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -217,33 +512,49 @@ function setConnection(ok, text) {
   $("conn").textContent = text;
 }
 
-/* ---------- scene + metrics ---------- */
+/* ---------- 3D scene update ---------- */
 function updateScene(distance, gateClosed) {
   const d = Math.max(0, Math.min(MAX_SCALE_CM, Number(distance) || 0));
-  const x = 60 + (d / MAX_SCALE_CM) * 500;
-  $("train").setAttribute("transform", `translate(${x} 0)`);
 
-  let angle = -50;          // -50 = open, 0 = closed
-  let gate, approach, color;
+  // Map 0..800 cm  →  700..0 px  (far = 0 cm, near = 800 cm)
+  // The closer the train gets (larger d), the farther right it slides on the track.
+  const progress = d / MAX_SCALE_CM;                 // 0 = far, 1 = near
+  const trainX = 30 + progress * TRACK_LENGTH_PX;
 
+  // Slight scale + depth bump to fake perspective
+  const scale = 0.65 + progress * 0.5;
+  const z = 20 + progress * 80;
+
+  $("train3d").style.transform =
+    `translate3d(${trainX}px,0,0) translateZ(${z}px) scale(${scale})`;
+
+  // Shadow follows the train
+  $("trainShadow").style.transform = `translateX(${trainX}px) scale(${scale})`;
+
+  // Gate arm: 3D swing
+  const arm = $("gateArm");
   if (gateClosed) {
-    angle = 0;
-    gate = "CLOSED";
-    approach = "VERY NEAR";
-    color = "var(--red)";
-  } else if (d < 80) {
-    angle = -20;
-    gate = "OPEN";
-    approach = "APPROACHING";
-    color = "var(--yellow)";
+    arm.classList.add("closed");
+    arm.classList.remove("open");
   } else {
-    angle = -50;
-    gate = "OPEN";
-    approach = "CLEAR";
-    color = "var(--green)";
+    arm.classList.add("open");
+    arm.classList.remove("closed");
   }
 
-  $("gateArm").setAttribute("transform", `translate(821 233) rotate(${angle})`);
+  // Gate warning lamp colour
+  const lamp = $("gateLamp");
+  if (gateClosed) lamp.classList.remove("calm");
+  else lamp.classList.add("calm");
+
+  // Text colour band
+  let color = "var(--green)";
+  if (gateClosed) color = "var(--red)";
+  else if (d < 80) color = "var(--yellow)";
+
+  // Status strings
+  const gate = gateClosed ? "CLOSED" : "OPEN";
+  const approach = gateClosed ? "VERY NEAR" : d < 80 ? "APPROACHING" : "CLEAR";
+
   $("gateStatus").textContent = gate;
   $("approach").textContent = approach;
   $("gateStatus").style.color = color;
@@ -254,11 +565,10 @@ function updateScene(distance, gateClosed) {
     : "GATE OPEN — MONITORING";
   $("sceneStatus").style.color = color;
 
-  $("alarm").setAttribute("opacity", gateClosed ? "1" : d < 80 ? ".5" : ".15");
-
   $("bar").style.width = (d / MAX_SCALE_CM * 100) + "%";
   $("bar").style.background = color;
   $("scale").textContent = d + " cm";
+  $("distanceOverlay").textContent = d;
 
   $("faultState").textContent = gateClosed ? "Gate is CLOSED" : "Gate is open";
   $("faultState").style.color = gateClosed ? "var(--red)" : "var(--green)";
@@ -269,6 +579,7 @@ function updateScene(distance, gateClosed) {
              : "Well above close threshold";
 }
 
+/* ---------- live data handler ---------- */
 function showLatest(v) {
   if (!v || v.distance_cm === undefined) {
     $("dbstatus").textContent = "Connected, but distance_cm is missing at /live.";
@@ -280,7 +591,6 @@ function showLatest(v) {
     return;
   }
 
-  // Trust the flag sent by the device; fall back to the local rule.
   const gateClosed = (v.gate_closed === true) || (d < GATE_CLOSE_CM);
 
   $("distance").textContent = d;
