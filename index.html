@@ -95,31 +95,29 @@ code{background:#091526;padding:2px 5px;border-radius:5px;font-size:12px}
 footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
 
 /* ============================================================
-   2D RAILWAY SCENE — clear, side-view
+   NEW SCENE: Fixed gate at crossing, train approaches from far
    ============================================================ */
 .scene2d{
   position:relative;
   width:100%;
-  height:auto;
-  display:block;
   background:linear-gradient(180deg,#0b1a30 0%,#142b49 55%,#1d3a4a 75%,#0c1a17 100%);
   border-bottom:1px solid var(--line);
   overflow:hidden;
 }
 .scene2d svg{display:block;width:100%;height:auto}
 
-/* Animated wheel rotation */
+/* Wheel spin */
 @keyframes wheelSpin{to{transform:rotate(360deg)}}
 .wheel{transform-box:fill-box;transform-origin:center;animation:wheelSpin 1.2s linear infinite}
 .wheel.stopped{animation:none}
 
-/* Gate arm transition */
+/* Gate arm — pivot fixed at crossing */
 #gateArm{
   transform-origin:821px 233px;
-  transition:transform .5s cubic-bezier(.4,.9,.3,1.1);
+  transition:transform .55s cubic-bezier(.4,.9,.3,1.1);
 }
 
-/* Alarm pulse */
+/* Alarm pulse when closed */
 @keyframes alarmPulse{0%,100%{opacity:.35}50%{opacity:1}}
 #alarm{animation:alarmPulse 1s ease-in-out infinite}
 #alarm.off{animation:none;opacity:.15}
@@ -127,6 +125,11 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
 /* Headlight glow */
 @keyframes headGlow{0%,100%{opacity:.7}50%{opacity:1}}
 #headlight{animation:headGlow 1.6s ease-in-out infinite}
+
+/* Train motion — smooth interpolation */
+#train{
+  transition:transform .5s cubic-bezier(.2,.7,.3,1);
+}
 
 @media(max-width:900px){.grid,.two{grid-template-columns:1fr}}
 </style>
@@ -138,7 +141,7 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
     <div class="logo">🚦</div>
     <div>
       <h1>RailGuard <span style="color:#63b3ff">Live Monitor</span></h1>
-      <div class="sub">TF-Luna distance • Train approach • Gate status</div>
+      <div class="sub">TF-Luna sensor at railway gate • Train approach detection</div>
     </div>
   </div>
   <div class="pill"><span id="dot" class="dot"></span><span id="conn">Waiting for Firebase connection</span></div>
@@ -149,12 +152,12 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
     <!-- ================= 2D SCENE ================= -->
     <section class="panel scenePanel">
       <div class="sceneHead">
-        <h2>2D Railway Crossing</h2>
+        <h2>Railway Gate — Live Train Approach</h2>
         <span id="sceneStatus" class="status">WAITING FOR DATA</span>
       </div>
 
       <div class="scene2d">
-        <svg viewBox="0 0 900 400" role="img" aria-label="2D train and crossing animation">
+        <svg viewBox="0 0 900 400" role="img" aria-label="Train approaching railway gate">
           <defs>
             <linearGradient id="sky" x2="0" y2="1">
               <stop stop-color="#142b49"/>
@@ -167,93 +170,122 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
             <pattern id="sleepers" width="42" height="22" patternUnits="userSpaceOnUse">
               <rect x="4" width="8" height="22" rx="2" fill="#6c7d91"/>
             </pattern>
+            <!-- Perspective fade for distant track -->
+            <linearGradient id="trackFade" x2="0" y2="1">
+              <stop offset="0" stop-color="#000" stop-opacity=".75"/>
+              <stop offset="1" stop-color="#000" stop-opacity="0"/>
+            </linearGradient>
           </defs>
 
           <!-- Sky -->
           <rect width="900" height="400" fill="url(#sky)"/>
 
           <!-- Sun -->
-          <circle cx="755" cy="58" r="26" fill="#f6dca0" opacity=".9"/>
+          <circle cx="760" cy="55" r="26" fill="#f6dca0" opacity=".85"/>
 
-          <!-- Mountains -->
-          <path d="M0 195L105 100 190 165 295 83 410 183 515 112 630 177 740 96 900 190V270H0Z" fill="#294b61"/>
-          <path d="M0 230Q180 195 330 232T650 225T900 218V400H0Z" fill="#1d574f"/>
+          <!-- Distant mountains -->
+          <path d="M0 195L105 100 190 165 295 83 410 183 515 112 630 177 740 96 900 190V270H0Z" fill="#294b61" opacity=".9"/>
 
-          <!-- Ground / road -->
-          <path d="M0 263H900V400H0Z" fill="#35404c"/>
-          <path d="M0 246H900V286H0Z" fill="#69717a"/>
-          <path d="M0 266H900" stroke="#f8d56c" stroke-width="3" stroke-dasharray="26 20"/>
+          <!-- Distant tree line -->
+          <path d="M0 230Q180 195 330 232T650 225T900 218V270H0Z" fill="#1d574f"/>
 
-          <!-- Rail track -->
-          <rect x="0" y="294" width="900" height="52" fill="url(#sleepers)"/>
-          <path d="M0 300H900M0 340H900" stroke="#dce4ed" stroke-width="4"/>
+          <!-- ============================================
+               RAILWAY TRACK — fixed, perspective view
+               Track recedes into the distance (left → right)
+               ============================================ -->
+          <rect x="0" y="270" width="900" height="80" fill="#35404c"/>
 
-          <!-- Crossing sign -->
-          <rect x="38" y="120" width="105" height="60" rx="5" fill="#10233a" stroke="#91b8d6" stroke-width="2"/>
-          <text x="90" y="145" fill="#e9f4ff" text-anchor="middle" font-size="12" font-weight="700">RAILWAY</text>
-          <text x="90" y="162" fill="#7bd4ff" text-anchor="middle" font-size="12">CROSSING</text>
+          <!-- Sleepers (fixed) -->
+          <rect x="0" y="284" width="900" height="52" fill="url(#sleepers)"/>
 
-          <!-- ==================== TRAIN ==================== -->
-          <g id="train" transform="translate(390 0)">
+          <!-- Two rails -->
+          <path d="M0 292H900" stroke="#dce4ed" stroke-width="4"/>
+          <path d="M0 328H900" stroke="#dce4ed" stroke-width="4"/>
+
+          <!-- Track fade at far end -->
+          <rect x="0" y="270" width="260" height="80" fill="url(#trackFade)"/>
+
+          <!-- ============================================
+               TRAIN — starts at far left (distant), moves right
+               toward the gate as distance decreases
+               ============================================ -->
+          <g id="train" transform="translate(40 0)">
             <!-- Body -->
-            <rect x="0" y="190" width="290" height="84" rx="10" fill="url(#trainBody)" stroke="#ffb0b6" stroke-width="2"/>
+            <rect x="0" y="255" width="240" height="68" rx="8" fill="url(#trainBody)" stroke="#ffb0b6" stroke-width="2"/>
             <!-- Windows -->
-            <rect x="18" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-            <rect x="80" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-            <rect x="133" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-            <rect x="186" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-            <!-- Cab -->
-            <rect x="242" y="202" width="28" height="34" rx="4" fill="#f7d36a"/>
+            <rect x="14" y="266" width="34" height="22" rx="3" fill="#bce8f7" stroke="#eefaff" stroke-width="2.5"/>
+            <rect x="64" y="266" width="34" height="22" rx="3" fill="#bce8f7" stroke="#eefaff" stroke-width="2.5"/>
+            <rect x="114" y="266" width="34" height="22" rx="3" fill="#bce8f7" stroke="#eefaff" stroke-width="2.5"/>
+            <rect x="164" y="266" width="34" height="22" rx="3" fill="#bce8f7" stroke="#eefaff" stroke-width="2.5"/>
+            <!-- Cab (front = right side, facing gate) -->
+            <rect x="206" y="262" width="24" height="28" rx="3" fill="#f7d36a"/>
             <!-- Headlight -->
-            <circle id="headlight" cx="286" cy="219" r="6" fill="#fff3b0"/>
+            <circle id="headlight" cx="232" cy="276" r="5" fill="#fff3b0"/>
             <!-- Underbody -->
-            <rect x="0" y="245" width="290" height="12" fill="#8c253b"/>
+            <rect x="0" y="308" width="240" height="10" fill="#8c253b"/>
             <!-- Wheels -->
-            <circle class="wheel" cx="45" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
-            <circle class="wheel" cx="235" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
+            <circle class="wheel" cx="40" cy="332" r="12" fill="#111827" stroke="#aab6c5" stroke-width="3"/>
+            <circle class="wheel" cx="200" cy="332" r="12" fill="#111827" stroke="#aab6c5" stroke-width="3"/>
             <!-- Label -->
-            <text x="145" y="241" fill="#fff" text-anchor="middle" font-size="13" font-weight="800" opacity=".85">TRAIN</text>
+            <text x="120" y="300" fill="#fff" text-anchor="middle" font-size="12" font-weight="800" opacity=".85">TRAIN</text>
           </g>
 
-          <!-- ==================== GATE ==================== -->
-          <!-- Post -->
-          <rect x="750" y="160" width="9" height="100" rx="3" fill="#a9b8c9"/>
-          <!-- Housing -->
-          <rect x="735" y="151" width="39" height="24" rx="5" fill="#18283d" stroke="#b4c9df" stroke-width="2"/>
-          <circle cx="754" cy="163" r="6" fill="#63b3ff"/>
-          <!-- Base -->
-          <rect x="812" y="228" width="18" height="47" rx="4" fill="#d9e3ed"/>
+          <!-- ============================================
+               RAILWAY GATE — fixed at right side of scene
+               ============================================ -->
+          <!-- Sensor on gate -->
+          <rect x="750" y="155" width="9" height="115" rx="3" fill="#a9b8c9"/>
+          <rect x="735" y="146" width="39" height="24" rx="5" fill="#18283d" stroke="#b4c9df" stroke-width="2"/>
+          <circle cx="754" cy="158" r="6" fill="#63b3ff"/>
+          <text x="780" y="138" fill="#e8f3ff" font-size="11" text-anchor="middle">TF-Luna</text>
+
+          <!-- Gate base -->
+          <rect x="812" y="228" width="18" height="55" rx="4" fill="#d9e3ed"/>
           <circle cx="821" cy="233" r="10" fill="#f7d36a" stroke="#fff0bb" stroke-width="3"/>
-          <!-- Arm (starts open at -50°, closed at 0°) -->
+
+          <!-- Gate arm (rotates at pivot) -->
           <g id="gateArm" transform="translate(821 233) rotate(-50)">
-            <rect x="-180" y="-6" width="180" height="12" rx="4" fill="#f5f7fa"/>
-            <path d="M-170 -6H-145V6H-170M-120 -6H-95V6H-120M-70 -6H-45V6H-70M-20 -6H0V6H-20" fill="#e94a5c"/>
+            <rect x="-190" y="-6" width="190" height="12" rx="4" fill="#f5f7fa"/>
+            <path d="M-180 -6H-155V6H-180M-130 -6H-105V6H-130M-80 -6H-55V6H-80M-30 -6H-5V6H-30" fill="#e94a5c"/>
           </g>
-          <!-- Alarm -->
+
+          <!-- Alarm lamp -->
           <g id="alarm" opacity=".2">
             <circle cx="821" cy="205" r="8" fill="#ff4e60"/>
             <circle cx="821" cy="205" r="14" fill="none" stroke="#ff4e60" stroke-width="2"/>
           </g>
-          <!-- Sensor label -->
-          <text x="780" y="140" fill="#e8f3ff" font-size="12" text-anchor="middle">TF-Luna</text>
+
+          <!-- Road passing through gate -->
+          <rect x="830" y="270" width="70" height="130" fill="#2c333d"/>
+          <path d="M865 270V400" stroke="#f8d56c" stroke-width="2" stroke-dasharray="10 8"/>
 
           <!-- Distance overlay chip -->
           <g transform="translate(20 20)">
-            <rect width="150" height="42" rx="10" fill="rgba(8,17,31,.82)" stroke="#26374e"/>
-            <text x="14" y="17" fill="#9eb0c8" font-size="10" letter-spacing="1">DISTANCE</text>
-            <text x="14" y="34" fill="#edf4ff" font-size="17" font-weight="800">
-              <tspan id="distanceOverlay">--</tspan><tspan font-size="11" fill="#9eb0c8"> cm</tspan>
+            <rect width="170" height="46" rx="10" fill="rgba(8,17,31,.85)" stroke="#26374e"/>
+            <text x="14" y="18" fill="#9eb0c8" font-size="10" letter-spacing="1">TF-LUNA DISTANCE</text>
+            <text x="14" y="38" fill="#edf4ff" font-size="19" font-weight="800">
+              <tspan id="distanceOverlay">--</tspan><tspan font-size="12" fill="#9eb0c8"> cm</tspan>
+            </text>
+          </g>
+
+          <!-- Status banner in scene -->
+          <g transform="translate(690 20)">
+            <rect width="190" height="34" rx="8" fill="rgba(8,17,31,.85)" stroke="#26374e"/>
+            <text id="sceneBanner" x="95" y="22" fill="#36d399" font-size="12" font-weight="800" text-anchor="middle">
+              GATE OPEN
             </text>
           </g>
 
           <!-- Footer -->
-          <text x="450" y="388" fill="#d8e4ef" font-size="11" text-anchor="middle" opacity=".7">
+          <text x="450" y="388" fill="#d8e4ef" font-size="10" text-anchor="middle" opacity=".6">
             VISUAL DEMO ONLY — NOT A REAL GATE CONTROLLER
           </text>
         </svg>
       </div>
 
-      <div class="caption">Train slides along the track based on live distance. Gate arm swings up (open) or down (closed).</div>
+      <div class="caption">
+        Sensor fixed at the railway gate. As the train comes closer (distance decreasing), the gate closes. As it moves away (distance increasing), the gate opens.
+      </div>
     </section>
 
     <!-- ================= STATUS ================= -->
@@ -268,7 +300,7 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
         <div class="metric">
           <div class="label">Gate Status</div>
           <div id="gateStatus" class="value status">UNKNOWN</div>
-          <div class="muted">Simulated from distance</div>
+          <div class="muted">Based on sensor distance</div>
         </div>
         <div class="metric">
           <div class="label">Train Approach</div>
@@ -337,6 +369,12 @@ const firebaseConfig = {
 const GATE_CLOSE_CM = 50;
 const MAX_SCALE_CM  = 800;
 
+// Train travel range in SVG units:
+// 0 cm   → x = 40   (far away, left side of track)
+// 800 cm → x = 560  (at the gate, right side)
+const TRAIN_X_FAR   = 40;
+const TRAIN_X_NEAR  = 560;
+
 const $ = id => document.getElementById(id);
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -356,12 +394,16 @@ function setConnection(ok, text) {
 function updateScene(distance, gateClosed) {
   const d = Math.max(0, Math.min(MAX_SCALE_CM, Number(distance) || 0));
 
-  // Train X: 0 cm → left (far away), 800 cm → right (at crossing)
-  // Keep the train visible on screen at all times.
-  const x = 20 + (d / MAX_SCALE_CM) * 500;
-  $("train").setAttribute("transform", `translate(${x} 0)`);
+  // Invert mapping: larger distance (800) = far (left), smaller distance (0) = near (right)
+  // The sensor sits at the gate. When the train is far away, TF-Luna reads 800 cm.
+  // When the train is at the gate, TF-Luna reads ~0 cm.
+  const progress = d / MAX_SCALE_CM;                   // 1 = far, 0 = near
+  const trainX = TRAIN_X_NEAR - progress * (TRAIN_X_NEAR - TRAIN_X_FAR);
+  // trainX: 560 (near) ← 40 (far)
 
-  // Gate arm angle: -50° = open, 0° = closed
+  $("train").setAttribute("transform", `translate(${trainX} 0)`);
+
+  // Gate arm: -50° = open, 0° = closed
   const angle = gateClosed ? 0 : -50;
   $("gateArm").setAttribute("transform", `translate(821 233) rotate(${angle})`);
 
@@ -370,7 +412,7 @@ function updateScene(distance, gateClosed) {
   if (gateClosed) {
     alarm.setAttribute("opacity", "1");
     alarm.classList.remove("off");
-  } else if (d < 80) {
+  } else if (d < 120) {
     alarm.setAttribute("opacity", ".5");
     alarm.classList.remove("off");
   } else {
@@ -381,11 +423,11 @@ function updateScene(distance, gateClosed) {
   // Colour band
   let color = "var(--green)";
   if (gateClosed) color = "var(--red)";
-  else if (d < 80) color = "var(--yellow)";
+  else if (d < 120) color = "var(--yellow)";
 
   // Status strings
   const gate     = gateClosed ? "CLOSED" : "OPEN";
-  const approach = gateClosed ? "VERY NEAR" : d < 80 ? "APPROACHING" : "CLEAR";
+  const approach = gateClosed ? "AT GATE" : d < 120 ? "APPROACHING" : d < 400 ? "IN DISTANCE" : "FAR AWAY";
 
   $("gateStatus").textContent = gate;
   $("approach").textContent = approach;
@@ -393,11 +435,18 @@ function updateScene(distance, gateClosed) {
   $("approach").style.color = color;
 
   $("sceneStatus").textContent = gateClosed
-    ? `GATE CLOSED (< ${GATE_CLOSE_CM} CM)`
-    : "GATE OPEN — MONITORING";
+    ? `GATE CLOSED — TRAIN AT ${d} CM`
+    : "GATE OPEN — TRACK CLEAR";
   $("sceneStatus").style.color = color;
 
-  $("bar").style.width = (d / MAX_SCALE_CM * 100) + "%";
+  // Scene banner
+  const banner = $("sceneBanner");
+  banner.textContent = gateClosed ? "GATE CLOSED" : "GATE OPEN";
+  banner.setAttribute("fill", gateClosed ? "#ff5d6c" : "#36d399");
+
+  // Distance bar (shows how close: full = near, empty = far)
+  const proximity = 1 - progress;                       // 1 = near, 0 = far
+  $("bar").style.width = (proximity * 100) + "%";
   $("bar").style.background = color;
   $("scale").textContent = d + " cm";
   $("distanceOverlay").textContent = d;
@@ -406,9 +455,10 @@ function updateScene(distance, gateClosed) {
   $("faultState").style.color = gateClosed ? "var(--red)" : "var(--green)";
 
   $("distanceHint").textContent = gateClosed
-    ? "Below close threshold — logged"
-    : d < 80 ? "Approaching close threshold"
-             : "Well above close threshold";
+    ? "Train at gate — logged"
+    : d < 120 ? "Train approaching gate"
+              : d < 400 ? "Train in the distance"
+                        : "Train far away";
 }
 
 /* ---------- live data handler ---------- */
