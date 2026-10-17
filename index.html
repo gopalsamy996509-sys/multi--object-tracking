@@ -95,7 +95,7 @@ code{background:#091526;padding:2px 5px;border-radius:5px;font-size:12px}
 footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
 
 /* ============================================================
-   2D RAILWAY SCENE — clear, side-view
+   2D RAILWAY SCENE
    ============================================================ */
 .scene2d{
   position:relative;
@@ -194,23 +194,23 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
           <text x="90" y="162" fill="#7bd4ff" text-anchor="middle" font-size="12">CROSSING</text>
 
           <!-- ==================== TRAIN ==================== -->
+          <!-- The train now faces right, so the cab is at the front (right side) -->
           <g id="train" transform="translate(390 0)">
             <!-- Body -->
             <rect x="0" y="190" width="290" height="84" rx="10" fill="url(#trainBody)" stroke="#ffb0b6" stroke-width="2"/>
             <!-- Windows -->
-            <rect x="18" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-            <rect x="80" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-            <rect x="133" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-            <rect x="186" y="204" width="43" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
-            <!-- Cab -->
-            <rect x="242" y="202" width="28" height="34" rx="4" fill="#f7d36a"/>
+            <rect x="48" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+            <rect x="100" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+            <rect x="152" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
+            <!-- Cab (at the front) -->
+            <rect x="206" y="204" width="42" height="26" rx="4" fill="#bce8f7" stroke="#eefaff" stroke-width="3"/>
             <!-- Headlight -->
-            <circle id="headlight" cx="286" cy="219" r="6" fill="#fff3b0"/>
+            <circle id="headlight" cx="280" cy="217" r="5" fill="#fff3b0"/>
             <!-- Underbody -->
             <rect x="0" y="245" width="290" height="12" fill="#8c253b"/>
             <!-- Wheels -->
-            <circle class="wheel" cx="45" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
-            <circle class="wheel" cx="235" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
+            <circle class="wheel" cx="60" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
+            <circle class="wheel" cx="220" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
             <!-- Label -->
             <text x="145" y="241" fill="#fff" text-anchor="middle" font-size="13" font-weight="800" opacity=".85">TRAIN</text>
           </g>
@@ -253,7 +253,7 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
         </svg>
       </div>
 
-      <div class="caption">Train slides along the track based on live distance. Gate arm swings up (open) or down (closed).</div>
+      <div class="caption">Train approaches the gate as distance decreases. Gate arm swings up (open) or down (closed).</div>
     </section>
 
     <!-- ================= STATUS ================= -->
@@ -356,9 +356,12 @@ function setConnection(ok, text) {
 function updateScene(distance, gateClosed) {
   const d = Math.max(0, Math.min(MAX_SCALE_CM, Number(distance) || 0));
 
-  // Train X: 0 cm → left (far away), 800 cm → right (at crossing)
-  // Keep the train visible on screen at all times.
-  const x = 20 + (d / MAX_SCALE_CM) * 500;
+  // FIXED LOGIC:
+  // 800 cm (Far)  -> Train is on the left (x=50)
+  // 0 cm (Close)  -> Train is on the right, near the gate (x=450)
+  const progress = d / MAX_SCALE_CM; 
+  const x = 50 + ((1 - progress) * 420); 
+  
   $("train").setAttribute("transform", `translate(${x} 0)`);
 
   // Gate arm angle: -50° = open, 0° = closed
