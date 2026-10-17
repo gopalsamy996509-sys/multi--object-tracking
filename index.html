@@ -171,10 +171,8 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
 
           <!-- Sky -->
           <rect width="900" height="400" fill="url(#sky)"/>
-
-          <!-- Sun -->
           <circle cx="755" cy="58" r="26" fill="#f6dca0" opacity=".9"/>
-
+          
           <!-- Mountains -->
           <path d="M0 195L105 100 190 165 295 83 410 183 515 112 630 177 740 96 900 190V270H0Z" fill="#294b61"/>
           <path d="M0 230Q180 195 330 232T650 225T900 218V400H0Z" fill="#1d574f"/>
@@ -194,7 +192,6 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
           <text x="90" y="162" fill="#7bd4ff" text-anchor="middle" font-size="12">CROSSING</text>
 
           <!-- ==================== TRAIN ==================== -->
-          <!-- The train now faces right, so the cab is at the front (right side) -->
           <g id="train" transform="translate(390 0)">
             <!-- Body -->
             <rect x="0" y="190" width="290" height="84" rx="10" fill="url(#trainBody)" stroke="#ffb0b6" stroke-width="2"/>
@@ -211,29 +208,28 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
             <!-- Wheels -->
             <circle class="wheel" cx="60" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
             <circle class="wheel" cx="220" cy="278" r="15" fill="#111827" stroke="#aab6c5" stroke-width="4"/>
-            <!-- Label -->
             <text x="145" y="241" fill="#fff" text-anchor="middle" font-size="13" font-weight="800" opacity=".85">TRAIN</text>
           </g>
 
           <!-- ==================== GATE ==================== -->
-          <!-- Post -->
           <rect x="750" y="160" width="9" height="100" rx="3" fill="#a9b8c9"/>
-          <!-- Housing -->
           <rect x="735" y="151" width="39" height="24" rx="5" fill="#18283d" stroke="#b4c9df" stroke-width="2"/>
           <circle cx="754" cy="163" r="6" fill="#63b3ff"/>
-          <!-- Base -->
           <rect x="812" y="228" width="18" height="47" rx="4" fill="#d9e3ed"/>
           <circle cx="821" cy="233" r="10" fill="#f7d36a" stroke="#fff0bb" stroke-width="3"/>
+          
           <!-- Arm (starts open at -50°, closed at 0°) -->
           <g id="gateArm" transform="translate(821 233) rotate(-50)">
             <rect x="-180" y="-6" width="180" height="12" rx="4" fill="#f5f7fa"/>
             <path d="M-170 -6H-145V6H-170M-120 -6H-95V6H-120M-70 -6H-45V6H-70M-20 -6H0V6H-20" fill="#e94a5c"/>
           </g>
+          
           <!-- Alarm -->
           <g id="alarm" opacity=".2">
             <circle cx="821" cy="205" r="8" fill="#ff4e60"/>
             <circle cx="821" cy="205" r="14" fill="none" stroke="#ff4e60" stroke-width="2"/>
           </g>
+          
           <!-- Sensor label -->
           <text x="780" y="140" fill="#e8f3ff" font-size="12" text-anchor="middle">TF-Luna</text>
 
@@ -252,7 +248,6 @@ footer{padding:0 20px 26px;text-align:center;color:#8092aa;font-size:11px}
           </text>
         </svg>
       </div>
-
       <div class="caption">Train approaches the gate as distance decreases. Gate arm swings up (open) or down (closed).</div>
     </section>
 
@@ -333,7 +328,6 @@ const firebaseConfig = {
   appId: "1:627693413866:web:a790305e37a87bc52cbe93"
 };
 
-// Gate closes when distance drops below this value (must match ESP32)
 const GATE_CLOSE_CM = 50;
 const MAX_SCALE_CM  = 800;
 
@@ -352,13 +346,23 @@ function setConnection(ok, text) {
   $("conn").textContent = text;
 }
 
+/* ---------- Time Formatter ---------- */
+// Since the ESP32 only sends `timestamp_ms` (which is millis() uptime),
+// we calculate the real clock time by taking the current time and subtracting the uptime.
+function formatEventTime(uptimeMs) {
+  if (!uptimeMs) return "Unknown time";
+  const now = Date.now();
+  const eventTime = new Date(now - uptimeMs);
+  
+  return eventTime.toLocaleDateString([], {month: 'short', day: 'numeric'}) + " " + 
+         eventTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+}
+
 /* ---------- 2D scene update ---------- */
 function updateScene(distance, gateClosed) {
   const d = Math.max(0, Math.min(MAX_SCALE_CM, Number(distance) || 0));
 
-  // FIXED LOGIC:
-  // 800 cm (Far)  -> Train is on the left (x=50)
-  // 0 cm (Close)  -> Train is on the right, near the gate (x=450)
+  // 800 cm -> Left (x=50) | 0 cm -> Right (x=470)
   const progress = d / MAX_SCALE_CM; 
   const x = 50 + ((1 - progress) * 420); 
   
@@ -447,7 +451,16 @@ function showLogs(v) {
   const el = $("logs");
   el.replaceChildren();
 
-  const rows = v ? Object.entries(v).reverse() : [];
+  let rows = [];
+  
+  // If there's data, we convert the object into an array and sort by actual timestamp
+  if (v) {
+    rows = Object.entries(v)
+      .map(([key, item]) => ({ key, ...item }))
+      .sort((a, b) => (b.timestamp_ms || 0) - (a.timestamp_ms || 0)) // newest first
+      .slice(0, 25); // Keep max 25
+  }
+
   $("count").textContent = rows.length + " records";
 
   if (!rows.length) {
@@ -455,7 +468,7 @@ function showLogs(v) {
     return;
   }
 
-  for (const [key, item] of rows) {
+  for (const item of rows) {
     const row = document.createElement("div");
     row.className = "log";
 
@@ -465,8 +478,10 @@ function showLogs(v) {
 
     const small = document.createElement("div");
     small.className = "muted";
-    const ts = Number(item.timestamp_ms || 0);
-    small.textContent = "uptime " + (ts / 1000).toFixed(1) + " s · " + key;
+    
+    // Show formatted Date & Time
+    const timeStr = formatEventTime(Number(item.timestamp_ms || 0));
+    small.textContent = timeStr;
 
     left.append(strong, small);
 
@@ -502,7 +517,7 @@ function connectDevice() {
     );
 
     stopLogs = onValue(
-      query(ref(db, "TF_Luna/faults"), limitToLast(25)),
+      query(ref(db, "TF_Luna/faults"), limitToLast(50)),
       s => showLogs(s.val()),
       e => { $("logs").textContent = "Log read error: " + e.message; }
     );
